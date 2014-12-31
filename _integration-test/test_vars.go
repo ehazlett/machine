@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -43,14 +43,19 @@ func init() {
 	if machineBin := os.Getenv("MACHINE_BINARY"); machineBin != "" {
 		machineBinary = machineBin
 	} else {
-		whichCmd := exec.Command("which", "machine")
-		out, _, err := runCommandWithOutput(whichCmd)
-		if err == nil {
-			machineBinary = stripTrailingCharacters(out)
-
-		} else {
-			fmt.Printf("ERROR: couldn't resolve full path to the Machine binary")
+		wd, err := os.Getwd()
+		if err != nil {
+			fmt.Printf("ERROR: unable to get current directory: %s", err)
 			os.Exit(1)
 		}
+		machineBinary = filepath.Join(wd, "../machine")
+	}
+	if _, err := os.Stat(machineBinary); err != nil {
+		if os.IsNotExist(err) {
+			fmt.Printf("ERROR: unable to find the machine binary.  Have you tried building it?")
+		} else {
+			fmt.Printf("ERROR: %s", err)
+		}
+		os.Exit(1)
 	}
 }

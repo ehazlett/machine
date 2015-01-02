@@ -31,6 +31,16 @@ func main() {
 			Name:   "storage-path",
 			Usage:  "Configures storage path",
 		},
+		cli.StringFlag{
+			Name:  "ssl-cert-path",
+			Usage: "SSL certificate",
+			Value: "",
+		},
+		cli.StringFlag{
+			Name:  "ssl-key-path",
+			Usage: "SSL certificate key",
+			Value: "",
+		},
 	}
 
 	app.Run(os.Args)

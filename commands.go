@@ -20,7 +20,9 @@ import (
 	_ "github.com/docker/machine/drivers/google"
 	_ "github.com/docker/machine/drivers/none"
 	_ "github.com/docker/machine/drivers/virtualbox"
+	"github.com/docker/machine/server"
 	"github.com/docker/machine/state"
+	"github.com/docker/machine/store"
 )
 
 type hostListItem struct {
@@ -51,10 +53,10 @@ var Commands = []cli.Command{
 		Usage: "Get or set the active machine",
 		Action: func(c *cli.Context) {
 			name := c.Args().First()
-			store := NewStore(c.GlobalString("storage-path"))
+			st := store.NewStore(c.GlobalString("storage-path"))
 
 			if name == "" {
-				host, err := store.GetActive()
+				host, err := st.GetActive()
 				if err != nil {
 					log.Fatalf("error getting active host: %v", err)
 				}
@@ -62,12 +64,12 @@ var Commands = []cli.Command{
 					fmt.Println(host.Name)
 				}
 			} else if name != "" {
-				host, err := store.Load(name)
+				host, err := st.Load(name)
 				if err != nil {
 					log.Fatalf("error loading host: %v", err)
 				}
 
-				if err := store.SetActive(host); err != nil {
+				if err := st.SetActive(host); err != nil {
 					log.Fatalf("error setting active host: %v", err)
 				}
 			} else {
@@ -107,13 +109,13 @@ var Commands = []cli.Command{
 				log.Fatalf("Identity authentication public key doesn't exist at %q. Create your public key by running the \"docker\" command.", drivers.PublicKeyPath())
 			}
 
-			store := NewStore(c.GlobalString("storage-path"))
+			st := store.NewStore(c.GlobalString("storage-path"))
 
-			host, err := store.Create(name, driver, c)
+			host, err := st.Create(name, driver, c)
 			if err != nil {
 				log.Fatal(err)
 			}
-			if err := store.SetActive(host); err != nil {
+			if err := st.SetActive(host); err != nil {
 				log.Fatalf("error setting active host: %v", err)
 			}
 
@@ -154,19 +156,19 @@ var Commands = []cli.Command{
 		},
 	},
 	{
+		Name: "ls",
 		Flags: []cli.Flag{
 			cli.BoolFlag{
 				Name:  "quiet, q",
 				Usage: "Enable quiet mode",
 			},
 		},
-		Name:  "ls",
 		Usage: "List machines",
 		Action: func(c *cli.Context) {
 			quiet := c.Bool("quiet")
-			store := NewStore(c.GlobalString("storage-path"))
+			st := store.NewStore(c.GlobalString("storage-path"))
 
-			hostList, err := store.List()
+			hostList, err := st.List()
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -201,7 +203,7 @@ var Commands = []cli.Command{
 							}
 						}
 
-						isActive, err := store.IsActive(&host)
+						isActive, err := st.IsActive(&host)
 						if err != nil {
 							log.Errorf("error determining whether host %q is active: %s",
 								host.Name, err)
@@ -264,9 +266,9 @@ var Commands = []cli.Command{
 
 			isError := false
 
-			store := NewStore(c.GlobalString("storage-path"))
+			st := store.NewStore(c.GlobalString("storage-path"))
 			for _, host := range c.Args() {
-				if err := store.Remove(host, force); err != nil {
+				if err := st.Remove(host, force); err != nil {
 					log.Errorf("Error removing machine %s: %s", host, err)
 					isError = true
 				}
@@ -288,10 +290,10 @@ var Commands = []cli.Command{
 		Usage: "Log into or run a command on a machine with SSH",
 		Action: func(c *cli.Context) {
 			name := c.Args().First()
-			store := NewStore(c.GlobalString("storage-path"))
+			st := store.NewStore(c.GlobalString("storage-path"))
 
 			if name == "" {
-				host, err := store.GetActive()
+				host, err := st.GetActive()
 				if err != nil {
 					log.Fatalf("unable to get active host: %v", err)
 				}
@@ -304,7 +306,7 @@ var Commands = []cli.Command{
 				i++
 			}
 
-			host, err := store.Load(name)
+			host, err := st.Load(name)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -346,6 +348,30 @@ var Commands = []cli.Command{
 		},
 	},
 	{
+		Name: "server",
+		Flags: []cli.Flag{
+			cli.StringFlag{
+				Name:  "listen, l",
+				Usage: "Address to listen for server",
+				Value: ":8080",
+			},
+		},
+		Usage: "Run the machine server",
+		Action: func(c *cli.Context) {
+			st := store.NewStore(c.GlobalString("storage-path"))
+			srv, err := server.NewServer(c.String("listen"),
+				c.GlobalString("ssl-cert-path"), c.GlobalString("ssl-key-path"),
+				st)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			if err := srv.Run(); err != nil {
+				log.Fatal(err)
+			}
+		},
+	},
+	{
 		Name:  "upgrade",
 		Usage: "Upgrade a machine to the latest version of Docker",
 		Action: func(c *cli.Context) {
@@ -368,19 +394,19 @@ var Commands = []cli.Command{
 	},
 }
 
-func getHost(c *cli.Context) *Host {
+func getHost(c *cli.Context) *store.Host {
 	name := c.Args().First()
-	store := NewStore(c.GlobalString("storage-path"))
+	st := store.NewStore(c.GlobalString("storage-path"))
 
 	if name == "" {
-		host, err := store.GetActive()
+		host, err := st.GetActive()
 		if err != nil {
 			log.Fatalf("unable to get active host: %v", err)
 		}
 		return host
 	}
 
-	host, err := store.Load(name)
+	host, err := st.Load(name)
 	if err != nil {
 		log.Fatalf("unable to load host: %v", err)
 	}

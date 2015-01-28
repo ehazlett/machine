@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,13 +29,17 @@ import (
 	_ "github.com/docker/machine/drivers/vmwarevsphere"
 	"github.com/docker/machine/state"
 	"github.com/docker/machine/utils"
+	"github.com/docker/swarm/discovery/token"
 )
 
 type machineConfig struct {
+	machineName    string
 	caCertPath     string
 	clientCertPath string
 	clientKeyPath  string
 	machineUrl     string
+	swarmMaster    bool
+	swarmHost      string
 }
 
 type hostListItem struct {
@@ -163,6 +168,11 @@ var Commands = []cli.Command{
 		Action: cmdCreate,
 	},
 	{
+		Name:   "create-swarm-token",
+		Usage:  "Generate a Swarm Cluster Token",
+		Action: cmdCreateSwarmToken,
+	},
+	{
 		Name:   "config",
 		Usage:  "Print the connection config for machine",
 		Action: cmdConfig,
@@ -213,6 +223,12 @@ var Commands = []cli.Command{
 		Name:   "env",
 		Usage:  "Display the commands to set up the environment for the Docker client",
 		Action: cmdEnv,
+		Flags: []cli.Flag{
+			cli.BoolFlag{
+				Name:  "swarm",
+				Usage: "Display the Swarm config instead of the Docker daemon",
+			},
+		},
 	},
 	{
 		Name:   "ssh",
@@ -295,6 +311,17 @@ func cmdCreate(c *cli.Context) {
 
 	log.Infof("%q has been created and is now the active machine", name)
 	log.Infof("Configure docker client with: $(%s env %s)", c.App.Name, name)
+}
+
+func cmdCreateSwarmToken(c *cli.Context) {
+	discovery := &token.TokenDiscoveryService{}
+	discovery.Initialize("", 0)
+	token, err := discovery.CreateCluster()
+	if err != nil {
+		log.Fatal(err)
+
+	}
+	fmt.Println(token)
 }
 
 func cmdConfig(c *cli.Context) {
@@ -420,8 +447,30 @@ func cmdEnv(c *cli.Context) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	dockerHost := cfg.machineUrl
+	if c.Bool("swarm") {
+		if !cfg.swarmMaster {
+			log.Fatalf("%s is not a swarm master", cfg.machineName)
+		}
+		u, err := url.Parse(cfg.swarmHost)
+		if err != nil {
+			log.Fatal(err)
+		}
+		parts := strings.Split(u.Host, ":")
+		swarmPort := parts[1]
+
+		// get IP of machine to replace in case swarm host is 0.0.0.0
+		mUrl, err := url.Parse(cfg.machineUrl)
+		if err != nil {
+			log.Fatal(err)
+		}
+		mParts := strings.Split(mUrl.Host, ":")
+		machineIp := mParts[0]
+
+		dockerHost = fmt.Sprintf("tcp://%s:%s", machineIp, swarmPort)
+	}
 	fmt.Printf("export DOCKER_TLS_VERIFY=yes\nexport DOCKER_CERT_PATH=%s\nexport DOCKER_HOST=%s\n",
-		utils.GetMachineClientCertDir(), cfg.machineUrl)
+		utils.GetMachineClientCertDir(), dockerHost)
 }
 
 func cmdSsh(c *cli.Context) {
@@ -587,9 +636,12 @@ func getMachineConfig(c *cli.Context) (*machineConfig, error) {
 		}
 	}
 	return &machineConfig{
+		machineName:    name,
 		caCertPath:     caCert,
 		clientCertPath: clientCert,
 		clientKeyPath:  clientKey,
 		machineUrl:     machineUrl,
+		swarmMaster:    machine.SwarmMaster,
+		swarmHost:      machine.SwarmHost,
 	}, nil
 }

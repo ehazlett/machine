@@ -16,6 +16,7 @@ import (
 	"github.com/docker/machine/drivers/amazonec2/amz"
 	"github.com/docker/machine/ssh"
 	"github.com/docker/machine/state"
+	"github.com/docker/machine/utils"
 )
 
 const (
@@ -147,6 +148,18 @@ func NewDriver(machineName string, storePath string, caCert string, privateKey s
 	return &Driver{Id: id, MachineName: machineName, storePath: storePath, CaCertPath: caCert, PrivateKeyPath: privateKey}, nil
 }
 
+func (d *Driver) GetMachineName() string {
+	return d.MachineName
+}
+
+func (d *Driver) GetCACertPath() string {
+	return d.CaCertPath
+}
+
+func (d *Driver) GetCAKeyPath() string {
+	return d.PrivateKeyPath
+}
+
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	region, err := validateAwsRegion(flags.String("amazonec2-region"))
 	if err != nil {
@@ -252,8 +265,14 @@ func (d *Driver) Create() error {
 		return fmt.Errorf("unable to find a subnet in the zone: %s", regionZone)
 	}
 
+	log.Debug("generating cloud init")
+	cloudInitUserData, err := drivers.GenerateCloudInitBase64(d, nil)
+	if err != nil {
+		return err
+	}
+
 	log.Debugf("launching instance in subnet %s", subnetId)
-	instance, err := d.getClient().RunInstance(d.AMI, d.InstanceType, d.Zone, 1, 1, d.SecurityGroupId, d.KeyName, subnetId, bdm)
+	instance, err := d.getClient().RunInstance(d.AMI, d.InstanceType, d.Zone, 1, 1, d.SecurityGroupId, d.KeyName, subnetId, bdm, cloudInitUserData)
 
 	if err != nil {
 		return fmt.Errorf("Error launching instance: %s", err)
@@ -283,6 +302,7 @@ func (d *Driver) Create() error {
 	}
 
 	log.Debugf("Setting hostname: %s", d.MachineName)
+
 	cmd, err := d.GetSSHCommand(fmt.Sprintf(
 		"echo \"127.0.0.1 %s\" | sudo tee -a /etc/hosts && sudo hostname %s && echo \"%s\" | sudo tee /etc/hostname",
 		d.MachineName,
@@ -297,16 +317,10 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	log.Debugf("Installing Docker")
+	log.Info("Waiting for instance to configure Docker...")
 
-	cmd, err = d.GetSSHCommand("if [ ! -e /usr/bin/docker ]; then curl -sL https://get.docker.com | sh -; fi")
-	if err != nil {
-		return err
-
-	}
-	if err := cmd.Run(); err != nil {
-		return err
-
+	if !utils.WaitForDocker(fmt.Sprintf("%s:%d", d.IPAddress, dockerPort), 300) {
+		log.Warn("Unable to reach the Docker daemon.  Please check the instance.")
 	}
 
 	return nil

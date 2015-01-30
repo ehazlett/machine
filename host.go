@@ -5,13 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/machine/drivers"
@@ -79,7 +80,7 @@ func ValidateHostName(name string) (string, error) {
 	return name, nil
 }
 
-func GenerateClientCertificate(caCertPath, privateKeyPath string) error {
+func GenerateClientCertificate(caCertPath, privateKeyPath string) ([]byte, []byte, error) {
 	var (
 		org  = "docker-machine"
 		bits = 2048
@@ -92,12 +93,13 @@ func GenerateClientCertificate(caCertPath, privateKeyPath string) error {
 		return err
 	}
 
-	log.Debugf("generating client cert: %s", clientCertPath)
-	if err := utils.GenerateCert([]string{""}, clientCertPath, clientKeyPath, caCertPath, privateKeyPath, org, bits); err != nil {
-		return fmt.Errorf("error generating client cert: %s", err)
+	log.Debug("generating client cert")
+	clientCert, clientKey, err := utils.GenerateCert([]string{""}, caCertPath, privateKeyPath, org, bits)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error generating client cert: %s", err)
 	}
 
-	return nil
+	return clientCert, clientKey, nil
 }
 
 func (h *Host) ConfigureAuth() error {
@@ -167,14 +169,6 @@ func (h *Host) ConfigureAuth() error {
 	}
 
 	cmd, err = d.GetSSHCommand(fmt.Sprintf("echo \"%s\" | sudo tee -a %s", string(serverKey), machineServerKeyPath))
-	if err != nil {
-		return err
-	}
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-
-	cmd, err = d.GetSSHCommand(fmt.Sprintf("echo \"%s\" | sudo tee -a %s", string(serverCert), machineServerCertPath))
 	if err != nil {
 		return err
 	}

@@ -1,13 +1,77 @@
 package drivers
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"sort"
+	"text/template"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/codegangsta/cli"
 	"github.com/docker/machine/state"
+	"github.com/docker/machine/utils"
+)
+
+const (
+	cloudInitTemplate = `#cloud-config
+apt_update: true
+apt_sources:
+  - source: "deb https://get.docker.com/ubuntu docker main"
+    filename: docker.list
+    keyserver: keyserver.ubuntu.com
+    keyid: A88D21E9
+
+package_update: true
+
+packages:
+  - lxc-docker
+
+write_files:
+  - encoding: base64
+    content: {{ .DockerOptsBase64 }}
+    path: {{ .DockerConfig.EngineConfigPath }}
+    permissions: 0644
+  - encoding: base64
+    content: {{ .CaCertBase64 }}
+    path: {{ .MachineOpts.CaCertPath }}
+    permissions: 0644
+  - encoding: base64
+    content: {{ .ServerCertBase64 }}
+    path: {{ .MachineOpts.ServerCertPath }}
+    permissions: 0644
+  - encoding: base64
+    content: {{ .ServerKeyBase64 }}
+    path: {{ .MachineOpts.ServerKeyPath }}
+    permissions: 0644
+
+runcmd:
+  - [ stop, docker ]
+  - [ start, docker ]
+
+final_message: "Docker Machine provisioning complete"
+`
+)
+
+type (
+	CloudInitOptions struct {
+		MachineOpts      *MachineOptions
+		DockerConfig     *DockerConfig
+		DockerOptsBase64 string
+		CaCertBase64     string
+		ServerCertBase64 string
+		ServerKeyBase64  string
+	}
+
+	DockerConfig struct {
+		EngineConfig     string
+		EngineConfigPath string
+	}
 )
 
 // Driver defines how a host is created and controlled. Different types of
@@ -65,6 +129,15 @@ type Driver interface {
 
 	// GetDockerConfigDir returns the config directory for storing daemon configs
 	GetDockerConfigDir() string
+
+	// GetMachineName returns the name of the machine
+	GetMachineName() string
+
+	// GetCACertPath returns the CA cert path
+	GetCACertPath() string
+
+	// GetCAKeyPath returns the CA key path
+	GetCAKeyPath() string
 
 	// GetSSHCommand returns a command for SSH pointing at the correct user, host
 	// and keys for the host with args appended. If no args are passed, it will
@@ -143,4 +216,122 @@ type DriverOptions interface {
 	String(key string) string
 	Int(key string) int
 	Bool(key string) bool
+}
+
+func GenerateCloudInit(d Driver, machineOpts *MachineOptions) (string, error) {
+	if d.DriverName() == "none" {
+		return "", nil
+	}
+
+	machineCaCertPath := path.Join(d.GetDockerConfigDir(), "ca.pem")
+	machineServerCertPath := path.Join(d.GetDockerConfigDir(), "server.pem")
+	machineServerKeyPath := path.Join(d.GetDockerConfigDir(), "server-key.pem")
+
+	if machineOpts == nil {
+		machineOpts = &MachineOptions{
+			Host:           "tcp://0.0.0.0:2376",
+			Labels:         []string{},
+			CaCertPath:     machineCaCertPath,
+			ServerCertPath: machineServerCertPath,
+			ServerKeyPath:  machineServerKeyPath,
+		}
+	}
+
+	caCert, err := ioutil.ReadFile(d.GetCACertPath())
+	if err != nil {
+		return "", err
+	}
+
+	serverCert, serverKey, err := GenerateMachineCerts(d)
+	if err != nil {
+		return "", err
+	}
+
+	encodedCaCert := base64.StdEncoding.EncodeToString(caCert)
+	encodedServerCert := base64.StdEncoding.EncodeToString(serverCert)
+	encodedServerKey := base64.StdEncoding.EncodeToString(serverKey)
+
+	dockerConfig := GenerateDockerConfig(d, machineOpts)
+
+	buf := bytes.NewBufferString(dockerConfig.EngineConfig)
+	encodedDockerOpts := base64.StdEncoding.EncodeToString(buf.Bytes())
+
+	cloudInitOpts := &CloudInitOptions{
+		MachineOpts:      machineOpts,
+		DockerConfig:     dockerConfig,
+		DockerOptsBase64: encodedDockerOpts,
+		CaCertBase64:     encodedCaCert,
+		ServerCertBase64: encodedServerCert,
+		ServerKeyBase64:  encodedServerKey,
+	}
+
+	var tmpl bytes.Buffer
+	t := template.Must(template.New("machine-cloud-init").Parse(cloudInitTemplate))
+	if err := t.Execute(&tmpl, cloudInitOpts); err != nil {
+		return "", err
+	}
+
+	log.Debug("cloud config: ")
+	log.Debug(tmpl.String())
+
+	return tmpl.String(), nil
+}
+
+func GenerateCloudInitBase64(d Driver, machineOpts *MachineOptions) (string, error) {
+	config, err := GenerateCloudInit(d, machineOpts)
+	if err != nil {
+		return "", err
+	}
+
+	buf := bytes.NewBufferString(config)
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
+}
+
+func GenerateDockerConfig(d Driver, machineOpts *MachineOptions) *DockerConfig {
+	var (
+		daemonOpts    string
+		daemonOptsCfg string
+		daemonCfg     string
+	)
+
+	defaultDaemonOpts := fmt.Sprintf(`--tlsverify --tlscacert=%s --tlskey=%s --tlscert=%s`, machineOpts.CaCertPath, machineOpts.ServerKeyPath, machineOpts.ServerCertPath)
+	switch d.DriverName() {
+	case "virtualbox", "vmwarefusion", "vmwarevsphere":
+		daemonOpts = fmt.Sprintf("-H %s", machineOpts.Host)
+		daemonOptsCfg = filepath.Join(d.GetDockerConfigDir(), "profile")
+		opts := fmt.Sprintf("%s %s", defaultDaemonOpts, daemonOpts)
+		daemonCfg = fmt.Sprintf(`EXTRA_ARGS='%s'
+CACERT=%s
+SERVERCERT=%s
+SERVERKEY=%s
+DOCKER_TLS=no`, opts, machineOpts.CaCertPath, machineOpts.ServerKeyPath, machineOpts.ServerCertPath)
+	default:
+		daemonOpts = fmt.Sprintf("--host=unix:///var/run/docker.sock --host=%s", machineOpts.Host)
+		daemonOptsCfg = "/etc/default/docker"
+		opts := fmt.Sprintf("%s %s", defaultDaemonOpts, daemonOpts)
+		daemonCfg = fmt.Sprintf("export DOCKER_OPTS='%s'", opts)
+	}
+
+	return &DockerConfig{
+		EngineConfig:     daemonCfg,
+		EngineConfigPath: daemonOptsCfg,
+	}
+}
+
+func GenerateMachineCerts(d Driver) (serverCert []byte, serverKey []byte, err error) {
+	if d.DriverName() == "none" {
+		return nil, nil, nil
+	}
+
+	org := d.GetMachineName()
+	bits := 2048
+
+	log.Debugf("generating server cert for %s", d.GetMachineName())
+
+	certData, keyData, err := utils.GenerateCert([]string{"*"}, d.GetCACertPath(), d.GetCAKeyPath(), org, bits)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error generating server cert: %s", err)
+	}
+
+	return certData, keyData, err
 }

@@ -2,9 +2,11 @@ package utils
 
 import (
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 )
 
 func GetHomeDir() string {
@@ -70,4 +72,26 @@ func CopyFile(src, dst string) error {
 	}
 
 	return nil
+}
+
+// WaitForDocker will retry until either a successful connection or maximum retries is reached
+func WaitForDocker(url string, maxRetries int) bool {
+	counter := 0
+	for {
+		conn, err := net.DialTimeout("tcp", url, time.Duration(1)*time.Second)
+		if err != nil {
+			counter++
+			if counter == maxRetries {
+				return false
+
+			}
+			time.Sleep(1 * time.Second)
+			continue
+
+		}
+		defer conn.Close()
+		break
+	}
+
+	return true
 }

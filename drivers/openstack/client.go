@@ -1,7 +1,10 @@
 package openstack
 
 import (
+	"bytes"
+
 	log "github.com/Sirupsen/logrus"
+	"github.com/docker/machine/drivers"
 	"github.com/rackspace/gophercloud"
 	"github.com/rackspace/gophercloud/openstack"
 	"github.com/rackspace/gophercloud/openstack/compute/v2/extensions/keypairs"
@@ -45,12 +48,32 @@ type GenericClient struct {
 	Network  *gophercloud.ServiceClient
 }
 
+func (d *Driver) GetMachineName() string {
+	return d.MachineName
+}
+
+func (d *Driver) GetCACertPath() string {
+	return d.CaCertPath
+}
+
+func (d *Driver) GetCAKeyPath() string {
+	return d.PrivateKeyPath
+}
+
 func (c *GenericClient) CreateInstance(d *Driver) (string, error) {
+	cloudInitData, err := drivers.GenerateCloudInit(d, nil)
+	if err != nil {
+		return "", err
+	}
+
+	buf := bytes.NewBufferString(cloudInitData)
+
 	serverOpts := servers.CreateOpts{
 		Name:           d.MachineName,
 		FlavorRef:      d.FlavorId,
 		ImageRef:       d.ImageId,
 		SecurityGroups: d.SecurityGroups,
+		UserData:       buf.Bytes(),
 	}
 	if d.NetworkId != "" {
 		serverOpts.Networks = []servers.Network{
@@ -60,9 +83,7 @@ func (c *GenericClient) CreateInstance(d *Driver) (string, error) {
 		}
 	}
 
-	log.WithFields(log.Fields{
-		"Name": d.MachineName,
-	}).Info("Creating server...")
+	log.Info("Creating server...")
 
 	server, err := servers.Create(c.Compute, keypairs.CreateOptsExt{
 		serverOpts,

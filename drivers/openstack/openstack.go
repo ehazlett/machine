@@ -11,14 +11,16 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/codegangsta/cli"
-	"github.com/docker/docker/utils"
+	dutils "github.com/docker/docker/utils"
 	"github.com/docker/machine/drivers"
 	"github.com/docker/machine/ssh"
 	"github.com/docker/machine/state"
+	"github.com/docker/machine/utils"
 )
 
 const (
 	dockerConfigDir = "/etc/docker"
+	dockerPort      = 2376
 )
 
 type Driver struct {
@@ -317,7 +319,7 @@ func (d *Driver) PreCreateCheck() error {
 }
 
 func (d *Driver) Create() error {
-	d.KeyPairName = fmt.Sprintf("%s-%s", d.MachineName, utils.GenerateRandomID())
+	d.KeyPairName = fmt.Sprintf("%s-%s", d.MachineName, dutils.GenerateRandomID())
 
 	if err := d.resolveIds(); err != nil {
 		return err
@@ -342,11 +344,13 @@ func (d *Driver) Create() error {
 	if err := d.waitForSSHServer(); err != nil {
 		return err
 	}
-	if d.EnableDockerInstall {
-		if err := d.installDocker(); err != nil {
-			return err
-		}
+
+	log.Info("Waiting for instance to configure Docker...")
+
+	if !utils.WaitForDocker(fmt.Sprintf("%s:%d", d.Ip, dockerPort), 300) {
+		log.Warn("Unable to reach the Docker daemon.  Please check the instance.")
 	}
+
 	return nil
 }
 
@@ -378,14 +382,14 @@ func (d *Driver) Stop() error {
 }
 
 func (d *Driver) Remove() error {
-	log.WithField("MachineId", d.MachineId).Info("Deleting OpenStack instance...")
+	log.Info("Deleting OpenStack instance...")
 	if err := d.initCompute(); err != nil {
 		return err
 	}
 	if err := d.client.DeleteInstance(d); err != nil {
 		return err
 	}
-	log.WithField("Name", d.KeyPairName).Info("Deleting Key Pair...")
+	log.Info("Deleting Key Pair...")
 	if err := d.client.DeleteKeyPair(d, d.KeyPairName); err != nil {
 		return err
 	}
@@ -660,6 +664,7 @@ func (d *Driver) createMachine() error {
 		return err
 	}
 	d.MachineId = instanceId
+
 	return nil
 }
 
@@ -737,10 +742,7 @@ func (d *Driver) waitForSSHServer() error {
 	if err != nil {
 		return err
 	}
-	log.WithFields(log.Fields{
-		"MachineId": d.MachineId,
-		"IP":        ip,
-	}).Debug("Waiting for the SSH server to be started...")
+	log.Info("Waiting for SSH...")
 	return ssh.WaitForTCP(fmt.Sprintf("%s:%d", ip, d.SSHPort))
 }
 

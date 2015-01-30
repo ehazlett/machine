@@ -64,10 +64,6 @@ func (s *Store) Create(name string, driverName string, flags drivers.DriverOptio
 		return host, err
 	}
 
-	//if err := host.ConfigureAuth(); err != nil {
-	//	return host, err
-	//}
-
 	return host, nil
 }
 

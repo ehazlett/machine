@@ -14,10 +14,10 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/codegangsta/cli"
-	"github.com/docker/docker/utils"
 	"github.com/docker/machine/drivers"
 	"github.com/docker/machine/ssh"
 	"github.com/docker/machine/state"
+	"github.com/docker/machine/utils"
 )
 
 const (
@@ -116,6 +116,18 @@ func (driver *Driver) DriverName() string {
 	return "azure"
 }
 
+func (d *Driver) GetMachineName() string {
+	return d.MachineName
+}
+
+func (d *Driver) GetCACertPath() string {
+	return d.CaCertPath
+}
+
+func (d *Driver) GetCAKeyPath() string {
+	return d.PrivateKeyPath
+}
+
 func (driver *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	driver.SubscriptionID = flags.String("azure-subscription-id")
 
@@ -208,24 +220,25 @@ func (driver *Driver) Create() error {
 		return err
 	}
 
+	log.Debug("Adding cloudinit data")
+	if err := driver.addCustomData(vmConfig); err != nil {
+		return err
+	}
+
 	log.Debug("Creating VM...")
 	if err := vmClient.CreateAzureVM(vmConfig, driver.MachineName, driver.Location); err != nil {
 		return err
 	}
 
-	log.Info("Waiting for SSH...")
-	log.Debugf("Host: %s SSH Port: %d", driver.getHostname(), driver.SSHPort)
+	log.Info("Waiting for instance to configure Docker...")
 
-	if err := ssh.WaitForTCP(fmt.Sprintf("%s:%d", driver.getHostname(), driver.SSHPort)); err != nil {
-		return err
-	}
-
-	cmd, err := driver.GetSSHCommand("if [ ! -e /usr/bin/docker ]; then curl -sL https://get.docker.com | sh -; fi")
+	ip, err := driver.GetIP()
 	if err != nil {
 		return err
 	}
-	if err := cmd.Run(); err != nil {
-		return err
+
+	if !utils.WaitForDocker(fmt.Sprintf("%s:%d", ip, driver.DockerPort), 300) {
+		log.Warn("Unable to reach the Docker daemon.  Please check the instance.")
 	}
 
 	return nil
@@ -484,9 +497,29 @@ func (driver *Driver) Upgrade() error {
 	return cmd.Run()
 }
 
-func generateVMName() string {
-	randomID := utils.TruncateID(utils.GenerateRandomID())
-	return fmt.Sprintf("docker-host-%s", randomID)
+func (driver *Driver) addCustomData(vmConfig *vmClient.Role) error {
+	configSets := vmConfig.ConfigurationSets.ConfigurationSet
+	if len(configSets) == 0 {
+		return fmt.Errorf("no configuration set")
+
+	}
+	cloudInitData, err := drivers.GenerateCloudInitBase64(driver, nil)
+	if err != nil {
+		return err
+
+	}
+	if cloudInitData == "" {
+		return nil
+	}
+	for i := 0; i < len(configSets); i++ {
+		if configSets[i].ConfigurationSetType != "LinuxProvisioningConfiguration" {
+			continue
+		}
+		configSets[i].CustomData = cloudInitData
+		log.Debugf("added custom data to configuration")
+		break
+	}
+	return nil
 }
 
 func (driver *Driver) setUserSubscription() error {

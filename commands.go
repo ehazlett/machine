@@ -195,6 +195,15 @@ func cmdCreate(c *cli.Context) {
 		log.Fatal("You must specify a machine name")
 	}
 
+	caCertPath := c.GlobalString("tls-ca-cert")
+	caKeyPath := c.GlobalString("tls-ca-key")
+	clientCertPath := c.GlobalString("tls-client-cert")
+	clientKeyPath := c.GlobalString("tls-client-key")
+
+	if err := setupCertificates(caCertPath, caKeyPath, clientCertPath, clientKeyPath); err != nil {
+		log.Fatalf("Error setting up certificates: %s", err)
+	}
+
 	store := NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
 
 	host, err := store.Create(name, driver, c)
@@ -508,4 +517,62 @@ func getMachineConfig(c *cli.Context) (*machineConfig, error) {
 		clientKeyPath:  clientKey,
 		machineUrl:     machineUrl,
 	}, nil
+}
+
+func setupCertificates(caCertPath, caKeyPath, clientCertPath, clientKeyPath string) error {
+	org := utils.GetUsername()
+	bits := 2048
+
+	if _, err := os.Stat(utils.GetMachineDir()); err != nil {
+		if os.IsNotExist(err) {
+			if err := os.MkdirAll(utils.GetMachineDir(), 0700); err != nil {
+				log.Fatalf("Error creating machine config dir: %s", err)
+			}
+		} else {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(caCertPath); os.IsNotExist(err) {
+		log.Infof("Creating CA: %s", caCertPath)
+
+		// check if the key path exists; if so, error
+		if _, err := os.Stat(caKeyPath); err == nil {
+			log.Fatalf("The CA key already exists.  Please remove it or specify a different key/cert.")
+		}
+
+		if err := utils.GenerateCACertificate(caCertPath, caKeyPath, org, bits); err != nil {
+			log.Infof("Error generating CA certificate: %s", err)
+		}
+	}
+
+	if _, err := os.Stat(clientCertPath); os.IsNotExist(err) {
+		log.Infof("Creating client certificate: %s", clientCertPath)
+
+		if _, err := os.Stat(utils.GetMachineClientCertDir()); err != nil {
+			if os.IsNotExist(err) {
+				if err := os.Mkdir(utils.GetMachineClientCertDir(), 0700); err != nil {
+					log.Fatalf("Error creating machine client cert dir: %s", err)
+				}
+			} else {
+				log.Fatal(err)
+			}
+		}
+
+		// check if the key path exists; if so, error
+		if _, err := os.Stat(clientKeyPath); err == nil {
+			log.Fatalf("The client key already exists.  Please remove it or specify a different key/cert.")
+		}
+
+		if err := utils.GenerateCert([]string{""}, clientCertPath, clientKeyPath, caCertPath, caKeyPath, org, bits); err != nil {
+			log.Fatalf("Error generating client certificate: %s", err)
+		}
+
+		// copy ca.pem to client cert dir for docker client
+		if err := utils.CopyFile(caCertPath, filepath.Join(utils.GetMachineClientCertDir(), "ca.pem")); err != nil {
+			log.Fatalf("Error copying ca.pem to client cert dir: %s", err)
+		}
+	}
+
+	return nil
 }

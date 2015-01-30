@@ -11,14 +11,15 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/codegangsta/cli"
 	"github.com/digitalocean/godo"
-	// "github.com/docker/docker/utils"
 	"github.com/docker/machine/drivers"
 	"github.com/docker/machine/ssh"
 	"github.com/docker/machine/state"
+	"github.com/docker/machine/utils"
 )
 
 const (
 	dockerConfigDir = "/etc/docker"
+	dockerPort      = 2376
 )
 
 type Driver struct {
@@ -82,6 +83,18 @@ func (d *Driver) DriverName() string {
 	return "digitalocean"
 }
 
+func (d *Driver) GetMachineName() string {
+	return d.MachineName
+}
+
+func (d *Driver) GetCACertPath() string {
+	return d.CaCertPath
+}
+
+func (d *Driver) GetCAKeyPath() string {
+	return d.PrivateKeyPath
+}
+
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.AccessToken = flags.String("digitalocean-access-token")
 	d.Image = flags.String("digitalocean-image")
@@ -113,12 +126,18 @@ func (d *Driver) Create() error {
 
 	client := d.getClient()
 
+	cloudInitData, err := drivers.GenerateCloudInit(d, nil)
+	if err != nil {
+		return err
+	}
+
 	createRequest := &godo.DropletCreateRequest{
-		Image:   d.Image,
-		Name:    d.MachineName,
-		Region:  d.Region,
-		Size:    d.Size,
-		SSHKeys: []interface{}{d.SSHKeyID},
+		Image:    d.Image,
+		Name:     d.MachineName,
+		Region:   d.Region,
+		Size:     d.Size,
+		SSHKeys:  []interface{}{d.SSHKeyID},
+		UserData: cloudInitData,
 	}
 
 	newDroplet, _, err := client.Droplets.Create(createRequest)
@@ -171,18 +190,13 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	log.Debugf("Installing Docker")
+	log.Info("Waiting for instance to configure Docker...")
 
-	cmd, err = d.GetSSHCommand("if [ ! -e /usr/bin/docker ]; then curl -sL https://get.docker.com | sh -; fi")
-	if err != nil {
-		return err
-
-	}
-	if err := cmd.Run(); err != nil {
-		return err
-
+	if !utils.WaitForDocker(fmt.Sprintf("%s:%d", d.IPAddress, dockerPort), 300) {
+		log.Warn("Unable to reach the Docker daemon.  Please check the instance.")
 	}
 
+	return nil
 	return nil
 }
 

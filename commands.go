@@ -310,7 +310,12 @@ func cmdCreate(c *cli.Context) {
 	}
 
 	log.Infof("%q has been created and is now the active machine", name)
-	log.Infof("Configure docker client with: $(%s env %s)", c.App.Name, name)
+
+	envCommand := "env"
+	if host.SwarmMaster {
+		envCommand = "env --swarm"
+	}
+	log.Infof("Configure docker client with: $(%s %s %s)", c.App.Name, envCommand, name)
 }
 
 func cmdCreateSwarmToken(c *cli.Context) {

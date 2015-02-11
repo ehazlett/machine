@@ -41,7 +41,16 @@ func init() {
 	drivers.Register("digitalocean", &drivers.RegisteredDriver{
 		New:            NewDriver,
 		GetCreateFlags: GetCreateFlags,
+		GetCommand:     GetCommand,
 	})
+}
+
+func GetCommand() cli.Command {
+	return cli.Command{
+		Flags: GetCreateFlags(),
+		Name:  "digitalocean",
+		Usage: "Provision instances on DigitalOcean",
+	}
 }
 
 // GetCreateFlags registers the flags this driver adds to

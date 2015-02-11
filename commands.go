@@ -15,19 +15,20 @@ import (
 
 	"github.com/docker/machine/drivers"
 	_ "github.com/docker/machine/drivers/amazonec2"
-	_ "github.com/docker/machine/drivers/azure"
+	//_ "github.com/docker/machine/drivers/azure"
 	_ "github.com/docker/machine/drivers/digitalocean"
-	_ "github.com/docker/machine/drivers/google"
-	_ "github.com/docker/machine/drivers/hyperv"
-	_ "github.com/docker/machine/drivers/none"
-	_ "github.com/docker/machine/drivers/openstack"
-	_ "github.com/docker/machine/drivers/rackspace"
-	_ "github.com/docker/machine/drivers/softlayer"
-	_ "github.com/docker/machine/drivers/virtualbox"
-	_ "github.com/docker/machine/drivers/vmwarefusion"
-	_ "github.com/docker/machine/drivers/vmwarevcloudair"
-	_ "github.com/docker/machine/drivers/vmwarevsphere"
+	//_ "github.com/docker/machine/drivers/google"
+	//_ "github.com/docker/machine/drivers/hyperv"
+	//_ "github.com/docker/machine/drivers/none"
+	//_ "github.com/docker/machine/drivers/openstack"
+	//_ "github.com/docker/machine/drivers/rackspace"
+	//_ "github.com/docker/machine/drivers/softlayer"
+	//_ "github.com/docker/machine/drivers/virtualbox"
+	//_ "github.com/docker/machine/drivers/vmwarefusion"
+	//_ "github.com/docker/machine/drivers/vmwarevcloudair"
+	//_ "github.com/docker/machine/drivers/vmwarevsphere"
 	"github.com/docker/machine/state"
+	"github.com/docker/machine/store"
 	"github.com/docker/machine/utils"
 )
 
@@ -60,62 +61,16 @@ func (h hostListItemByName) Less(i, j int) bool {
 	return strings.ToLower(h[i].Name) < strings.ToLower(h[j].Name)
 }
 
-func setupCertificates(caCertPath, caKeyPath, clientCertPath, clientKeyPath string) error {
-	org := utils.GetUsername()
-	bits := 2048
-
-	if _, err := os.Stat(utils.GetMachineDir()); err != nil {
-		if os.IsNotExist(err) {
-			if err := os.MkdirAll(utils.GetMachineDir(), 0700); err != nil {
-				log.Fatalf("Error creating machine config dir: %s", err)
-			}
-		} else {
-			log.Fatal(err)
-		}
+func getCreateCommands() []cli.Command {
+	// inject cmdCreate action
+	commands := drivers.GetCommands()
+	newCommands := []cli.Command{}
+	for _, c := range commands {
+		c.Action = cmdCreate
+		newCommands = append(newCommands, c)
 	}
 
-	if _, err := os.Stat(caCertPath); os.IsNotExist(err) {
-		log.Infof("Creating CA: %s", caCertPath)
-
-		// check if the key path exists; if so, error
-		if _, err := os.Stat(caKeyPath); err == nil {
-			log.Fatalf("The CA key already exists.  Please remove it or specify a different key/cert.")
-		}
-
-		if err := utils.GenerateCACertificate(caCertPath, caKeyPath, org, bits); err != nil {
-			log.Infof("Error generating CA certificate: %s", err)
-		}
-	}
-
-	if _, err := os.Stat(clientCertPath); os.IsNotExist(err) {
-		log.Infof("Creating client certificate: %s", clientCertPath)
-
-		if _, err := os.Stat(utils.GetMachineClientCertDir()); err != nil {
-			if os.IsNotExist(err) {
-				if err := os.Mkdir(utils.GetMachineClientCertDir(), 0700); err != nil {
-					log.Fatalf("Error creating machine client cert dir: %s", err)
-				}
-			} else {
-				log.Fatal(err)
-			}
-		}
-
-		// check if the key path exists; if so, error
-		if _, err := os.Stat(clientKeyPath); err == nil {
-			log.Fatalf("The client key already exists.  Please remove it or specify a different key/cert.")
-		}
-
-		if err := utils.GenerateCert([]string{""}, clientCertPath, clientKeyPath, caCertPath, caKeyPath, org, bits); err != nil {
-			log.Fatalf("Error generating client certificate: %s", err)
-		}
-
-		// copy ca.pem to client cert dir for docker client
-		if err := utils.CopyFile(caCertPath, filepath.Join(utils.GetMachineClientCertDir(), "ca.pem")); err != nil {
-			log.Fatalf("Error copying ca.pem to client cert dir: %s", err)
-		}
-	}
-
-	return nil
+	return newCommands
 }
 
 var Commands = []cli.Command{
@@ -125,20 +80,9 @@ var Commands = []cli.Command{
 		Action: cmdActive,
 	},
 	{
-		Flags: append(
-			drivers.GetCreateFlags(),
-			cli.StringFlag{
-				Name: "driver, d",
-				Usage: fmt.Sprintf(
-					"Driver to create machine with. Available drivers: %s",
-					strings.Join(drivers.GetDriverNames(), ", "),
-				),
-				Value: "none",
-			},
-		),
-		Name:   "create",
-		Usage:  "Create a machine",
-		Action: cmdCreate,
+		Name:        "create",
+		Usage:       "Create a Machine",
+		Subcommands: getCreateCommands(),
 	},
 	{
 		Name:   "config",
@@ -221,10 +165,10 @@ var Commands = []cli.Command{
 
 func cmdActive(c *cli.Context) {
 	name := c.Args().First()
-	store := NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
+	st := store.NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
 
 	if name == "" {
-		host, err := store.GetActive()
+		host, err := st.GetActive()
 		if err != nil {
 			log.Fatalf("error getting active host: %v", err)
 		}
@@ -232,47 +176,17 @@ func cmdActive(c *cli.Context) {
 			fmt.Println(host.Name)
 		}
 	} else if name != "" {
-		host, err := store.Load(name)
+		host, err := st.Load(name)
 		if err != nil {
 			log.Fatalf("error loading host: %v", err)
 		}
 
-		if err := store.SetActive(host); err != nil {
+		if err := st.SetActive(host); err != nil {
 			log.Fatalf("error setting active host: %v", err)
 		}
 	} else {
 		cli.ShowCommandHelp(c, "active")
 	}
-}
-
-func cmdCreate(c *cli.Context) {
-	driver := c.String("driver")
-	name := c.Args().First()
-
-	if name == "" {
-		cli.ShowCommandHelp(c, "create")
-		log.Fatal("You must specify a machine name")
-	}
-
-	if err := setupCertificates(c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"),
-		c.GlobalString("tls-client-cert"), c.GlobalString("tls-client-key")); err != nil {
-		log.Fatalf("Error generating certificates: %s", err)
-	}
-
-	store := NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
-
-	host, err := store.Create(name, driver, c)
-	if err != nil {
-		log.Errorf("Error creating machine: %s", err)
-		log.Warn("You will want to check the provider to make sure the machine and associated resources were properly removed.")
-		log.Fatal("Error creating machine")
-	}
-	if err := store.SetActive(host); err != nil {
-		log.Fatalf("error setting active host: %v", err)
-	}
-
-	log.Infof("%q has been created and is now the active machine.", name)
-	log.Infof("To point your Docker client at it, run this in your shell: $(%s env %s)", c.App.Name, name)
 }
 
 func cmdConfig(c *cli.Context) {
@@ -310,9 +224,9 @@ func cmdKill(c *cli.Context) {
 
 func cmdLs(c *cli.Context) {
 	quiet := c.Bool("quiet")
-	store := NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
+	st := store.NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
 
-	hostList, err := store.List()
+	hostList, err := st.List()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -328,7 +242,7 @@ func cmdLs(c *cli.Context) {
 
 	for _, host := range hostList {
 		if !quiet {
-			tmpHost, err := store.GetActive()
+			tmpHost, err := st.GetActive()
 			if err != nil {
 				log.Errorf("There's a problem with the active host: %s", err)
 			}
@@ -337,7 +251,7 @@ func cmdLs(c *cli.Context) {
 				log.Errorf("There's a problem finding the active host")
 			}
 
-			go getHostState(host, *store, hostListItems)
+			go getHostState(host, *st, hostListItems)
 		} else {
 			fmt.Fprintf(w, "%s\n", host.Name)
 		}
@@ -381,9 +295,9 @@ func cmdRm(c *cli.Context) {
 
 	isError := false
 
-	store := NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
+	st := store.NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
 	for _, host := range c.Args() {
-		if err := store.Remove(host, force); err != nil {
+		if err := st.Remove(host, force); err != nil {
 			log.Errorf("Error removing machine %s: %s", host, err)
 			isError = true
 		}
@@ -408,10 +322,10 @@ func cmdSsh(c *cli.Context) {
 		sshCmd *exec.Cmd
 	)
 	name := c.Args().First()
-	store := NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
+	st := store.NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
 
 	if name == "" {
-		host, err := store.GetActive()
+		host, err := st.GetActive()
 		if err != nil {
 			log.Fatalf("unable to get active host: %v", err)
 		}
@@ -419,7 +333,7 @@ func cmdSsh(c *cli.Context) {
 		name = host.Name
 	}
 
-	host, err := store.Load(name)
+	host, err := st.Load(name)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -478,12 +392,12 @@ func cmdNotFound(c *cli.Context, command string) {
 	)
 }
 
-func getHost(c *cli.Context) *Host {
+func getHost(c *cli.Context) *store.Host {
 	name := c.Args().First()
-	store := NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
+	st := store.NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
 
 	if name == "" {
-		host, err := store.GetActive()
+		host, err := st.GetActive()
 		if err != nil {
 			log.Fatalf("unable to get active host: %v", err)
 		}
@@ -494,14 +408,14 @@ func getHost(c *cli.Context) *Host {
 		return host
 	}
 
-	host, err := store.Load(name)
+	host, err := st.Load(name)
 	if err != nil {
 		log.Fatalf("unable to load host: %v", err)
 	}
 	return host
 }
 
-func getHostState(host Host, store Store, hostListItems chan<- hostListItem) {
+func getHostState(host store.Host, st store.Store, hostListItems chan<- hostListItem) {
 	currentState, err := host.Driver.GetState()
 	if err != nil {
 		log.Errorf("error getting state for host %s: %s", host.Name, err)
@@ -516,7 +430,7 @@ func getHostState(host Host, store Store, hostListItems chan<- hostListItem) {
 		}
 	}
 
-	isActive, err := store.IsActive(&host)
+	isActive, err := st.IsActive(&host)
 	if err != nil {
 		log.Debugf("error determining whether host %q is active: %s",
 			host.Name, err)
@@ -533,11 +447,11 @@ func getHostState(host Host, store Store, hostListItems chan<- hostListItem) {
 
 func getMachineConfig(c *cli.Context) (*machineConfig, error) {
 	name := c.Args().First()
-	store := NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
-	var machine *Host
+	st := store.NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
+	var machine *store.Host
 
 	if name == "" {
-		m, err := store.GetActive()
+		m, err := st.GetActive()
 		if err != nil {
 			log.Fatalf("error getting active host: %v", err)
 		}
@@ -546,7 +460,7 @@ func getMachineConfig(c *cli.Context) (*machineConfig, error) {
 		}
 		machine = m
 	} else {
-		m, err := store.Load(name)
+		m, err := st.Load(name)
 		if err != nil {
 			return nil, fmt.Errorf("Error loading machine config: %s", err)
 		}
@@ -570,4 +484,34 @@ func getMachineConfig(c *cli.Context) (*machineConfig, error) {
 		clientKeyPath:  clientKey,
 		machineUrl:     machineUrl,
 	}, nil
+}
+
+func cmdCreate(c *cli.Context) {
+	driver := c.Command.Name
+	name := c.Args().First()
+
+	if name == "" {
+		cli.ShowCommandHelp(c, c.Command.Name)
+		log.Fatal("You must specify a machine name")
+	}
+
+	if err := utils.SetupMachineCertificates(c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"),
+		c.GlobalString("tls-client-cert"), c.GlobalString("tls-client-key")); err != nil {
+		log.Fatalf("Error configuring certificates: %s", err)
+	}
+
+	st := store.NewStore(c.GlobalString("storage-path"), c.GlobalString("tls-ca-cert"), c.GlobalString("tls-ca-key"))
+
+	host, err := st.Create(name, driver, c)
+	if err != nil {
+		log.Errorf("Error creating machine: %s", err)
+		log.Warn("You will want to check the provider to make sure the machine and associated resources were properly removed.")
+		log.Fatal("Error creating machine")
+	}
+	if err := st.SetActive(host); err != nil {
+		log.Fatalf("error setting active host: %v", err)
+	}
+
+	log.Infof("%q has been created and is now the active machine.", name)
+	log.Infof("To point your Docker client at it, run this in your shell: $(%s env %s)", c.App.Name, name)
 }

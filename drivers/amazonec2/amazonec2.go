@@ -69,6 +69,7 @@ func init() {
 	drivers.Register(driverName, &drivers.RegisteredDriver{
 		New:            NewDriver,
 		GetCreateFlags: GetCreateFlags,
+		GetCommand:     GetCommand,
 	})
 }
 
@@ -139,6 +140,14 @@ func GetCreateFlags() []cli.Flag {
 			Value:  defaultRootSize,
 			EnvVar: "AWS_ROOT_SIZE",
 		},
+	}
+}
+
+func GetCommand() cli.Command {
+	return cli.Command{
+		Flags: GetCreateFlags(),
+		Name:  "amazonec2",
+		Usage: "Provision instances on Amazon EC2",
 	}
 }
 

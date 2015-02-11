@@ -7,9 +7,11 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -145,6 +147,60 @@ func GenerateCert(hosts []string, certFile, keyFile, caFile, caKeyFile, org stri
 
 	pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
 	keyOut.Close()
+
+	return nil
+}
+
+func SetupMachineCertificates(caCertPath, caKeyPath, clientCertPath, clientKeyPath string) error {
+	org := GetUsername()
+	bits := 2048
+
+	if _, err := os.Stat(GetMachineDir()); err != nil {
+		if os.IsNotExist(err) {
+			if err := os.MkdirAll(GetMachineDir(), 0700); err != nil {
+				return fmt.Errorf("Error creating machine config dir: %s", err)
+			}
+		} else {
+			return err
+		}
+	}
+
+	if _, err := os.Stat(caCertPath); os.IsNotExist(err) {
+		// check if the key path exists; if so, error
+		if _, err := os.Stat(caKeyPath); err == nil {
+			return fmt.Errorf("The CA key already exists.  Please remove it or specify a different key/cert.")
+		}
+
+		if err := GenerateCACertificate(caCertPath, caKeyPath, org, bits); err != nil {
+			return fmt.Errorf("Error generating CA certificate: %s", err)
+		}
+	}
+
+	if _, err := os.Stat(clientCertPath); os.IsNotExist(err) {
+		if _, err := os.Stat(GetMachineClientCertDir()); err != nil {
+			if os.IsNotExist(err) {
+				if err := os.Mkdir(GetMachineClientCertDir(), 0700); err != nil {
+					return fmt.Errorf("Error creating machine client cert dir: %s", err)
+				}
+			} else {
+				return err
+			}
+		}
+
+		// check if the key path exists; if so, error
+		if _, err := os.Stat(clientKeyPath); err == nil {
+			return fmt.Errorf("The client key already exists.  Please remove it or specify a different key/cert.")
+		}
+
+		if err := GenerateCert([]string{""}, clientCertPath, clientKeyPath, caCertPath, caKeyPath, org, bits); err != nil {
+			return fmt.Errorf("Error generating client certificate: %s", err)
+		}
+
+		// copy ca.pem to client cert dir for docker client
+		if err := CopyFile(caCertPath, filepath.Join(GetMachineClientCertDir(), "ca.pem")); err != nil {
+			return fmt.Errorf("Error copying ca.pem to client cert dir: %s", err)
+		}
+	}
 
 	return nil
 }

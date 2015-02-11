@@ -81,6 +81,7 @@ type Driver interface {
 type RegisteredDriver struct {
 	New            func(machineName string, storePath string, caCert string, privateKey string) (Driver, error)
 	GetCreateFlags func() []cli.Flag
+	GetCommand     func() cli.Command
 }
 
 var ErrHostIsNotRunning = errors.New("host is not running")
@@ -127,6 +128,18 @@ func GetCreateFlags() []cli.Flag {
 	sort.Sort(ByFlagName(flags))
 
 	return flags
+}
+
+func GetCommands() []cli.Command {
+	commands := []cli.Command{}
+
+	for driverName := range drivers {
+		driver := drivers[driverName]
+		cmd := driver.GetCommand()
+		commands = append(commands, cmd)
+	}
+
+	return commands
 }
 
 // GetDriverNames returns a slice of all registered driver names

@@ -11,6 +11,7 @@ const (
 	Stopped
 	Stopping
 	Starting
+	Degraded
 	Error
 )
 
@@ -22,6 +23,7 @@ var states = []string{
 	"Stopped",
 	"Stopping",
 	"Starting",
+	"Degraded",
 	"Error",
 }
 

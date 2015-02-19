@@ -90,7 +90,7 @@ func GenerateClientCertificate(caCertPath, privateKeyPath string) error {
 func (m *Machine) ConfigureAuth() error {
 	d := m.Driver
 
-	if d.DriverName() == "none" {
+	if d.DriverName() == "none" || d.DriverName() == "cluster" {
 		return nil
 	}
 

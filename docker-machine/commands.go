@@ -47,6 +47,7 @@ type machineListItem struct {
 	DriverName string
 	State      state.State
 	URL        string
+	Nodes      []*machine.Machine
 }
 
 type machineListItemByName []machineListItem
@@ -280,8 +281,15 @@ func cmdCreate(c *cli.Context) {
 		log.Fatalf("error setting active machine: %v", err)
 	}
 
-	log.Infof("%q has been created and is now the active machine.", name)
-	log.Infof("To point your Docker client at it, run this in your shell: $(%s env %s)", c.App.Name, name)
+	url, err := machine.Driver.GetURL()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if url != "" {
+		log.Infof("%q has been created and is now the active machine.", name)
+		log.Infof("To point your Docker client at it, run this in your shell: $(%s env %s)", c.App.Name, name)
+	}
 }
 
 func cmdConfig(c *cli.Context) {
@@ -372,9 +380,36 @@ func cmdLs(c *cli.Context) {
 		if item.Active {
 			activeString = "*"
 		}
+
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 			item.Name, activeString, item.DriverName, item.State, item.URL)
+
+		for _, node := range item.Nodes {
+			state, err := node.Driver.GetState()
+			if err != nil {
+				log.Warnf("error getting node %s state: %s", node.Name, err)
+				continue
+			}
+
+			url, err := node.Driver.GetURL()
+			if err != nil {
+				log.Warnf("error getting node %s url: %s", node.Name, err)
+				continue
+			}
+
+			fmt.Fprintf(w, " └ %s\t%s\t%s\t%s\t%s\n",
+				node.Name, activeString, node.DriverName, state, url)
+		}
 	}
+
+	//for _, item := range items {
+	//	activeString := ""
+	//	if item.Active {
+	//		activeString = "*"
+	//	}
+	//	fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+	//		item.Name, activeString, item.DriverName, item.State, item.URL)
+	//}
 
 	w.Flush()
 }
@@ -406,6 +441,7 @@ func cmdRm(c *cli.Context) {
 			isError = true
 		}
 	}
+
 	if isError {
 		log.Fatal("There was an error removing a machine. To force remove it, pass the -f option. Warning: this might leave it running on the provider.")
 	}
@@ -546,13 +582,25 @@ func getMachineState(machine machine.Machine, api api.Api, machineListItems chan
 			machine.Name, err)
 	}
 
-	machineListItems <- machineListItem{
-		Name:       machine.Name,
+	mcn, err := api.Get(machine.Name)
+	if err != nil {
+		log.Errorf("unable to get machine %s: %s", machine.Name, err)
+		return
+	}
+
+	m := machineListItem{
+		Name:       mcn.Name,
 		Active:     isActive,
-		DriverName: machine.Driver.DriverName(),
+		DriverName: mcn.Driver.DriverName(),
 		State:      currentState,
 		URL:        url,
 	}
+
+	if mcn.Driver.DriverName() == "cluster" {
+		fmt.Println(mcn)
+	}
+
+	machineListItems <- m
 }
 
 func getMachineConfig(c *cli.Context) (*machineConfig, error) {

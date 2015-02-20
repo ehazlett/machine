@@ -89,7 +89,7 @@ func (s *Store) List() ([]Machine, []error) {
 			machines = append(machines, *machine)
 		}
 	}
-	return machines, nil
+	return machines, errors
 }
 
 func (s *Store) GetActive() (*Machine, error) {

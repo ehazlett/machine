@@ -50,6 +50,21 @@ func (d *Driver) getStore() *machine.Store {
 	return machine.NewStore(storePath, d.CaCertPath, d.PrivateKeyPath)
 }
 
+func (d *Driver) getClusterNodes() ([]*machine.Machine, error) {
+	nodes := []*machine.Machine{}
+
+	st := d.getStore()
+	for _, c := range d.ClusterNodes {
+		m, err := st.Get(c)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, m)
+	}
+
+	return nodes, nil
+}
+
 func NewDriver(machineName string, storePath string, caCert string, privateKey string) (drivers.Driver, error) {
 	return &Driver{MachineName: machineName, storePath: storePath, CaCertPath: caCert, PrivateKeyPath: privateKey}, nil
 }
@@ -72,11 +87,7 @@ func (d *Driver) PreCreateCheck() error {
 }
 
 func (d *Driver) Create() error {
-	log.Infof("Creating cluster...")
-	for _, node := range d.ClusterNodes {
-
-		log.Debugf("adding node to cluster: %s", node)
-	}
+	log.Infof("Created cluster...")
 	return nil
 }
 
@@ -89,19 +100,15 @@ func (d *Driver) GetIP() (string, error) {
 }
 
 func (d *Driver) GetState() (state.State, error) {
-	st := d.getStore()
-
 	s := state.Running
 
 	// TODO: use channel
-	for _, node := range d.ClusterNodes {
-		m, err := st.Get(node)
-		if err != nil {
-			log.Warnf("unable to get state for node %s: %s", node, err)
-			continue
-		}
-
-		mState, err := m.Driver.GetState()
+	nodes, err := d.getClusterNodes()
+	if err != nil {
+		return state.Error, err
+	}
+	for _, node := range nodes {
+		mState, err := node.Driver.GetState()
 		if err != nil {
 			return state.Degraded, nil
 		}
@@ -114,23 +121,21 @@ func (d *Driver) GetState() (state.State, error) {
 }
 
 func (d *Driver) Start() error {
-	st := d.getStore()
-
 	// TODO: use channel
-	for _, node := range d.ClusterNodes {
-		m, err := st.Get(node)
-		if err != nil {
-			return err
-		}
+	nodes, err := d.getClusterNodes()
+	if err != nil {
+		return err
+	}
 
-		mState, err := m.Driver.GetState()
+	for _, node := range nodes {
+		mState, err := node.Driver.GetState()
 		if err != nil {
 			log.Warnf("unable to get state for node %s: %s", node, err)
 			continue
 		}
 
 		if mState != state.Running {
-			if err := m.Start(); err != nil {
+			if err := node.Start(); err != nil {
 				log.Warnf("unable to start node %s: %s", node, err)
 			}
 		}
@@ -140,23 +145,21 @@ func (d *Driver) Start() error {
 }
 
 func (d *Driver) Stop() error {
-	st := d.getStore()
-
 	// TODO: use channel
-	for _, node := range d.ClusterNodes {
-		m, err := st.Get(node)
-		if err != nil {
-			return err
-		}
+	nodes, err := d.getClusterNodes()
+	if err != nil {
+		return err
+	}
 
-		mState, err := m.Driver.GetState()
+	for _, node := range nodes {
+		mState, err := node.Driver.GetState()
 		if err != nil {
 			log.Warnf("unable to get state for node %s: %s", node, err)
 			continue
 		}
 
 		if mState == state.Running {
-			if err := m.Stop(); err != nil {
+			if err := node.Stop(); err != nil {
 				log.Warnf("unable to stop node %s: %s", node, err)
 			}
 		}

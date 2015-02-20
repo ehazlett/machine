@@ -18,7 +18,7 @@ import (
 	"github.com/docker/machine/drivers"
 	_ "github.com/docker/machine/drivers/amazonec2"
 	_ "github.com/docker/machine/drivers/azure"
-	_ "github.com/docker/machine/drivers/cluster"
+	"github.com/docker/machine/drivers/cluster"
 	_ "github.com/docker/machine/drivers/digitalocean"
 	_ "github.com/docker/machine/drivers/google"
 	_ "github.com/docker/machine/drivers/hyperv"
@@ -42,12 +42,12 @@ type machineConfig struct {
 }
 
 type machineListItem struct {
-	Name       string
-	Active     bool
-	DriverName string
-	State      state.State
-	URL        string
-	Nodes      []*machine.Machine
+	Name          string
+	Active        bool
+	DriverName    string
+	State         state.State
+	URL           string
+	isClusterNode bool
 }
 
 type machineListItemByName []machineListItem
@@ -350,15 +350,6 @@ func cmdLs(c *cli.Context) {
 
 	for _, machine := range machineList {
 		if !quiet {
-			tmpMachine, err := mApi.GetActive()
-			if err != nil {
-				log.Errorf("There's a problem with the active machine: %s", err)
-			}
-
-			if tmpMachine == nil {
-				log.Errorf("There's a problem finding the active machine")
-			}
-
 			go getMachineState(machine, *mApi, machineListItems)
 		} else {
 			fmt.Fprintf(w, "%s\n", machine.Name)
@@ -373,43 +364,40 @@ func cmdLs(c *cli.Context) {
 
 	close(machineListItems)
 
-	sort.Sort(machineListItemByName(items))
+	machineGrouping := make(map[string][]machineListItem)
 
-	for _, item := range items {
-		activeString := ""
-		if item.Active {
-			activeString = "*"
-		}
-
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			item.Name, activeString, item.DriverName, item.State, item.URL)
-
-		for _, node := range item.Nodes {
-			state, err := node.Driver.GetState()
-			if err != nil {
-				log.Warnf("error getting node %s state: %s", node.Name, err)
-				continue
+	// associate items with clusters - this can probably be more efficient
+	for _, m := range machineList {
+		if m.Driver.DriverName() == "cluster" {
+			nodes := []machineListItem{}
+			for _, node := range m.Driver.(*cluster.Driver).ClusterNodes {
+				for i, item := range items {
+					if item.Name == node {
+						items[i].isClusterNode = true
+						nodes = append(nodes, item)
+					}
+				}
 			}
-
-			url, err := node.Driver.GetURL()
-			if err != nil {
-				log.Warnf("error getting node %s url: %s", node.Name, err)
-				continue
-			}
-
-			fmt.Fprintf(w, " └ %s\t%s\t%s\t%s\t%s\n",
-				node.Name, activeString, node.DriverName, state, url)
+			machineGrouping[m.Name] = nodes
 		}
 	}
 
-	//for _, item := range items {
-	//	activeString := ""
-	//	if item.Active {
-	//		activeString = "*"
-	//	}
-	//	fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-	//		item.Name, activeString, item.DriverName, item.State, item.URL)
-	//}
+	sort.Sort(machineListItemByName(items))
+
+	for _, item := range items {
+		if _, ok := machineGrouping[item.Name]; ok {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+				item.Name, getActiveString(item), item.DriverName, item.State, item.URL)
+
+			for _, node := range machineGrouping[item.Name] {
+				fmt.Fprintf(w, " └ %s\t%s\t%s\t%s\t%s\n",
+					node.Name, getActiveString(node), node.DriverName, node.State, node.URL)
+			}
+		} else if !item.isClusterNode {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+				item.Name, getActiveString(item), item.DriverName, item.State, item.URL)
+		}
+	}
 
 	w.Flush()
 }
@@ -596,11 +584,15 @@ func getMachineState(machine machine.Machine, api api.Api, machineListItems chan
 		URL:        url,
 	}
 
-	if mcn.Driver.DriverName() == "cluster" {
-		fmt.Println(mcn)
-	}
-
 	machineListItems <- m
+}
+
+func getActiveString(item machineListItem) string {
+	activeString := ""
+	if item.Active {
+		activeString = "*"
+	}
+	return activeString
 }
 
 func getMachineConfig(c *cli.Context) (*machineConfig, error) {

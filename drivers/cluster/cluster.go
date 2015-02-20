@@ -3,6 +3,7 @@ package cluster
 import (
 	"os/exec"
 	"path/filepath"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/codegangsta/cli"
@@ -102,11 +103,11 @@ func (d *Driver) GetIP() (string, error) {
 func (d *Driver) GetState() (state.State, error) {
 	s := state.Running
 
-	// TODO: use channel
 	nodes, err := d.getClusterNodes()
 	if err != nil {
 		return state.Error, err
 	}
+
 	for _, node := range nodes {
 		mState, err := node.Driver.GetState()
 		if err != nil {
@@ -117,11 +118,27 @@ func (d *Driver) GetState() (state.State, error) {
 			return state.Degraded, nil
 		}
 	}
+
 	return s, nil
 }
 
-func (d *Driver) Start() error {
-	// TODO: use channel
+func nodeAction(m *machine.Machine, action string, wg *sync.WaitGroup) {
+	actions := map[string]interface{}{
+		"start":   m.Start,
+		"stop":    m.Stop,
+		"upgrade": m.Upgrade,
+		"rm":      m.Remove,
+	}
+
+	if err := actions[action].(func() error)(); err != nil {
+		log.Warnf("unable to %s node %s: %s", action, m.Name, err)
+	}
+	wg.Done()
+}
+
+func (d *Driver) clusterAction(action string) error {
+	var wg sync.WaitGroup
+
 	nodes, err := d.getClusterNodes()
 	if err != nil {
 		return err
@@ -134,38 +151,34 @@ func (d *Driver) Start() error {
 			continue
 		}
 
-		if mState != state.Running {
-			if err := node.Start(); err != nil {
-				log.Warnf("unable to start node %s: %s", node, err)
+		switch action {
+		case "start":
+			if mState != state.Running {
+				wg.Add(1)
+				go nodeAction(node, action, &wg)
 			}
+		case "stop":
+			if mState != state.Stopped {
+				wg.Add(1)
+				go nodeAction(node, action, &wg)
+			}
+		default:
+			wg.Add(1)
+			go nodeAction(node, action, &wg)
 		}
 	}
+
+	wg.Wait()
 
 	return nil
 }
 
+func (d *Driver) Start() error {
+	return d.clusterAction("start")
+}
+
 func (d *Driver) Stop() error {
-	// TODO: use channel
-	nodes, err := d.getClusterNodes()
-	if err != nil {
-		return err
-	}
-
-	for _, node := range nodes {
-		mState, err := node.Driver.GetState()
-		if err != nil {
-			log.Warnf("unable to get state for node %s: %s", node, err)
-			continue
-		}
-
-		if mState == state.Running {
-			if err := node.Stop(); err != nil {
-				log.Warnf("unable to stop node %s: %s", node, err)
-			}
-		}
-	}
-
-	return nil
+	return d.clusterAction("stop")
 }
 
 func (d *Driver) Remove() error {
@@ -174,7 +187,14 @@ func (d *Driver) Remove() error {
 }
 
 func (d *Driver) Restart() error {
-	// TODO
+	if err := d.clusterAction("stop"); err != nil {
+		return err
+	}
+
+	if err := d.clusterAction("start"); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -216,21 +236,7 @@ func (d *Driver) GetDockerConfigDir() string {
 }
 
 func (d *Driver) Upgrade() error {
-	//log.Debugf("Upgrading Docker")
-
-	//cmd, err := d.GetSSHCommand("sudo apt-get update && sudo apt-get install --upgrade lxc-docker")
-	//if err != nil {
-	//	return err
-
-	//}
-	//if err := cmd.Run(); err != nil {
-	//	return err
-
-	//}
-
-	//return cmd.Run()
-
-	return nil
+	return d.clusterAction("upgrade")
 }
 
 func (d *Driver) GetSSHCommand(args ...string) (*exec.Cmd, error) {

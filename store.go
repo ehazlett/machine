@@ -68,7 +68,7 @@ func (s *Store) Create(name string, driverName string, flags drivers.DriverOptio
 		return host, err
 	}
 
-	if flags.Bool("swarm") {
+	if flags.String("swarm-discovery") != "" {
 		log.Info("Configuring Swarm...")
 
 		discovery := flags.String("swarm-discovery")

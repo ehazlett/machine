@@ -312,14 +312,14 @@ To connect to the Swarm master, use `docker-machine env --swarm swarm-master`
 For example:
 
 ```
-$ docker-machine env --swarm swarm-master
+$ docker-machine env swarm-master
 export DOCKER_TLS_VERIFY=yes
 export DOCKER_CERT_PATH=/home/ehazlett/.docker/machines/.client
 export DOCKER_HOST=tcp://192.168.99.100:3376
 ```
 
 You can load this into your environment using
-`$(docker-machine env --swarm swarm-master)`.
+`$(docker-machine env swarm-master)`.
 
 Now you can use the Docker CLI to query:
 

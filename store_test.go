@@ -41,7 +41,6 @@ func getDefaultTestDriverFlags() *DriverOptionsMock {
 		Data: map[string]interface{}{
 			"name":            "test",
 			"url":             "unix:///var/run/docker.sock",
-			"swarm":           false,
 			"swarm-host":      "",
 			"swarm-master":    false,
 			"swarm-discovery": "",

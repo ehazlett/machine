@@ -344,10 +344,7 @@ func cmdConfig(c *cli.Context) {
 		log.Fatal(err)
 	}
 	dockerHost := cfg.machineUrl
-	if c.IsSet("swarm-discovery") {
-		if !cfg.swarmMaster {
-			log.Fatalf("%s is not a swarm master", cfg.machineName)
-		}
+	if cfg.swarmDiscovery != "" && cfg.swarmMaster {
 		u, err := url.Parse(cfg.swarmHost)
 		if err != nil {
 			log.Fatal(err)
@@ -495,10 +492,7 @@ func cmdEnv(c *cli.Context) {
 	}
 
 	dockerHost := cfg.machineUrl
-	if c.Bool("swarm") {
-		if !cfg.swarmMaster {
-			log.Fatalf("%s is not a swarm master", cfg.machineName)
-		}
+	if cfg.swarmDiscovery != "" && cfg.swarmMaster {
 		u, err := url.Parse(cfg.swarmHost)
 		if err != nil {
 			log.Fatal(err)

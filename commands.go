@@ -169,8 +169,8 @@ var Commands = []cli.Command{
 		Action:      cmdConfig,
 		Flags: []cli.Flag{
 			cli.BoolFlag{
-				Name:  "swarm",
-				Usage: "Display the Swarm config instead of the Docker daemon",
+				Name:  "engine",
+				Usage: "Display the engine config when configuring a Swarm master",
 			},
 		},
 	},
@@ -228,8 +228,8 @@ var Commands = []cli.Command{
 		Action:      cmdEnv,
 		Flags: []cli.Flag{
 			cli.BoolFlag{
-				Name:  "swarm",
-				Usage: "Display the Swarm config instead of the Docker daemon",
+				Name:  "engine",
+				Usage: "Display the engine config when configuring a Swarm master",
 			},
 			cli.BoolFlag{
 				Name:  "unset, u",
@@ -344,7 +344,7 @@ func cmdConfig(c *cli.Context) {
 		log.Fatal(err)
 	}
 	dockerHost := cfg.machineUrl
-	if cfg.swarmDiscovery != "" && cfg.swarmMaster {
+	if cfg.swarmDiscovery != "" && cfg.swarmMaster && !c.Bool("engine") {
 		u, err := url.Parse(cfg.swarmHost)
 		if err != nil {
 			log.Fatal(err)
@@ -492,7 +492,7 @@ func cmdEnv(c *cli.Context) {
 	}
 
 	dockerHost := cfg.machineUrl
-	if cfg.swarmDiscovery != "" && cfg.swarmMaster {
+	if cfg.swarmDiscovery != "" && cfg.swarmMaster && !c.Bool("engine") {
 		u, err := url.Parse(cfg.swarmHost)
 		if err != nil {
 			log.Fatal(err)

@@ -50,6 +50,7 @@ type Driver struct {
 	SwarmMaster      bool
 	SwarmHost        string
 	SwarmDiscovery   string
+	Version          string
 	client           Client
 }
 
@@ -200,6 +201,7 @@ func NewDerivedDriver(machineName string, storePath string, client Client, caCer
 		client:         client,
 		CaCertPath:     caCert,
 		PrivateKeyPath: privateKey,
+		Version:        drivers.Version(),
 	}, nil
 }
 

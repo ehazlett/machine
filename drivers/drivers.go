@@ -10,6 +10,7 @@ import (
 	"github.com/docker/machine/provider"
 	"github.com/docker/machine/ssh"
 	"github.com/docker/machine/state"
+	"github.com/docker/machine/version"
 )
 
 type Port struct {
@@ -157,6 +158,10 @@ type DriverOptions interface {
 	String(key string) string
 	Int(key string) int
 	Bool(key string) bool
+}
+
+func Version() string {
+	return version.VERSION
 }
 
 func GetSSHCommandFromDriver(d Driver, args ...string) (*exec.Cmd, error) {

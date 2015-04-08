@@ -179,7 +179,7 @@ func ConfigureAuth(p Provisioner, authOptions auth.AuthOptions) error {
 		return err
 	}
 
-	cmd, err = p.SSHCommand(fmt.Sprintf("echo \"%s\" | sudo tee %s", dkrcfg.EngineOptions, dkrcfg.EngineOptionsPath))
+	cmd, err = p.GetDockerEnginerConfigCmd(dkrcfg.EngineOptions, dkrcfg.EngineOptionsPath)
 	if err != nil {
 		return err
 	}

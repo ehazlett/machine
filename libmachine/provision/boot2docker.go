@@ -137,3 +137,7 @@ func (provisioner *Boot2DockerProvisioner) SSHCommand(args ...string) (*exec.Cmd
 func (provisioner *Boot2DockerProvisioner) GetDriver() drivers.Driver {
 	return provisioner.Driver
 }
+
+func (provisioner *Boot2DockerProvisioner) GetDockerEnginerConfigCmd(engineOptions, engineOptionsPath string) (*exec.Cmd, error) {
+	return provisioner.SSHCommand(fmt.Sprintf("echo \"%s\" | sudo tee -a %s", engineOptions, engineOptionsPath))
+}

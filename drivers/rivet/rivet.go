@@ -3,7 +3,6 @@ package rivet
 import (
 	"fmt"
 	"io/ioutil"
-	"net"
 	"path/filepath"
 	"time"
 
@@ -182,7 +181,6 @@ func (d *Driver) GetURL() (string, error) {
 }
 
 func (d *Driver) GetIP() (string, error) {
-	// TODO: call to rvt
 	r, err := d.getAPI()
 	if err != nil {
 		return "", err
@@ -202,17 +200,30 @@ func (d *Driver) GetIP() (string, error) {
 }
 
 func (d *Driver) GetState() (state.State, error) {
-	ip, err := d.GetIP()
+	r, err := d.getAPI()
 	if err != nil {
 		return state.Error, err
 	}
-	addr := fmt.Sprintf("%s:%d", ip, d.SSHPort)
-	_, err = net.DialTimeout("tcp", addr, defaultTimeout)
-	var st state.State
+
+	resp, err := r.GetState(d.MachineName)
 	if err != nil {
-		st = state.Stopped
-	} else {
+		return state.Error, err
+	}
+
+	if resp.StatusCode != 200 {
+		return state.Error, fmt.Errorf(resp.Response)
+	}
+
+	var st state.State
+	switch resp.Response {
+	case "running":
 		st = state.Running
+	case "stopped":
+		st = state.Stopped
+	case "pending":
+		st = state.Starting
+	default:
+		st = state.None
 	}
 	return st, nil
 }

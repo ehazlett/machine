@@ -10,7 +10,6 @@ import (
 	"github.com/docker/machine/drivers"
 	"github.com/docker/machine/drivers/rivet/rvt"
 	"github.com/docker/machine/log"
-	"github.com/docker/machine/provider"
 	"github.com/docker/machine/ssh"
 	"github.com/docker/machine/state"
 )
@@ -94,10 +93,6 @@ func (d *Driver) AuthorizePort(ports []*drivers.Port) error {
 
 func (d *Driver) DeauthorizePort(ports []*drivers.Port) error {
 	return nil
-}
-
-func (d *Driver) GetProviderType() provider.ProviderType {
-	return provider.Remote
 }
 
 func (d *Driver) GetMachineName() string {

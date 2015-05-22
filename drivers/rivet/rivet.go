@@ -47,29 +47,34 @@ func init() {
 func GetCreateFlags() []cli.Flag {
 	return []cli.Flag{
 		cli.StringFlag{
-			Name:  "rivet-address",
-			Usage: "Address of rivet API endpoint",
-			Value: "",
+			Name:   "rivet-address",
+			Usage:  "Address of rivet API endpoint",
+			Value:  "",
+			EnvVar: "RIVET_ADDRESS",
 		},
 		cli.IntFlag{
-			Name:  "rivet-cpu",
-			Usage: "CPU for rivet instance",
-			Value: 1,
+			Name:   "rivet-cpu",
+			Usage:  "CPU for rivet instance",
+			Value:  1,
+			EnvVar: "RIVET_CPU",
 		},
 		cli.IntFlag{
-			Name:  "rivet-memory",
-			Usage: "Memory for rivet instance (in MB)",
-			Value: 1024,
+			Name:   "rivet-memory",
+			Usage:  "Memory for rivet instance (in MB)",
+			Value:  1024,
+			EnvVar: "RIVET_MEMORY",
 		},
 		cli.IntFlag{
-			Name:  "rivet-storage",
-			Usage: "Storage for rivet instance (in GB)",
-			Value: 10,
+			Name:   "rivet-storage",
+			Usage:  "Storage for rivet instance (in GB)",
+			Value:  10,
+			EnvVar: "RIVET_STORAGE",
 		},
 		cli.StringFlag{
-			Name:  "rivet-ssh-user",
-			Usage: "SSH user for rivet instance",
-			Value: "root",
+			Name:   "rivet-ssh-user",
+			Usage:  "SSH user for rivet instance",
+			Value:  "root",
+			EnvVar: "RIVET_SSH_USER",
 		},
 	}
 }

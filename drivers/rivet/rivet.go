@@ -254,7 +254,7 @@ func (d *Driver) Stop() error {
 		return err
 	}
 
-	resp, err := r.Stop(d.MachineName)
+	resp, err := r.Kill(d.MachineName)
 	if err != nil {
 		log.Error(err)
 		return err

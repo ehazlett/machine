@@ -45,6 +45,16 @@ func (r *RivetAPI) doRequest(method string, p string, params *url.Values, body i
 	return client.Do(req)
 }
 
+func (r *RivetAPI) getResponse(resp *http.Response) (*ApiResponse, error) {
+	var apiResponse ApiResponse
+
+	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+		return nil, err
+	}
+
+	return &apiResponse, nil
+}
+
 func (r *RivetAPI) Create(name string, key []byte, cpu int, memory int, storage int) (*ApiResponse, error) {
 	params := &url.Values{}
 	params.Add("name", name)
@@ -59,12 +69,7 @@ func (r *RivetAPI) Create(name string, key []byte, cpu int, memory int, storage 
 		return nil, err
 	}
 
-	var apiResponse ApiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return nil, err
-	}
-
-	return &apiResponse, nil
+	return r.getResponse(resp)
 }
 
 func (r *RivetAPI) GetState(name string) (*ApiResponse, error) {
@@ -76,12 +81,7 @@ func (r *RivetAPI) GetState(name string) (*ApiResponse, error) {
 		return nil, err
 	}
 
-	var apiResponse ApiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return nil, err
-	}
-
-	return &apiResponse, nil
+	return r.getResponse(resp)
 }
 
 func (r *RivetAPI) GetIP(name string) (*ApiResponse, error) {
@@ -93,12 +93,7 @@ func (r *RivetAPI) GetIP(name string) (*ApiResponse, error) {
 		return nil, err
 	}
 
-	var apiResponse ApiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return nil, err
-	}
-
-	return &apiResponse, nil
+	return r.getResponse(resp)
 }
 
 func (r *RivetAPI) Remove(name string) (*ApiResponse, error) {
@@ -110,12 +105,7 @@ func (r *RivetAPI) Remove(name string) (*ApiResponse, error) {
 		return nil, err
 	}
 
-	var apiResponse ApiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return nil, err
-	}
-
-	return &apiResponse, nil
+	return r.getResponse(resp)
 }
 
 func (r *RivetAPI) Kill(name string) (*ApiResponse, error) {
@@ -127,12 +117,7 @@ func (r *RivetAPI) Kill(name string) (*ApiResponse, error) {
 		return nil, err
 	}
 
-	var apiResponse ApiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return nil, err
-	}
-
-	return &apiResponse, nil
+	return r.getResponse(resp)
 }
 
 func (r *RivetAPI) Restart(name string) (*ApiResponse, error) {
@@ -144,12 +129,7 @@ func (r *RivetAPI) Restart(name string) (*ApiResponse, error) {
 		return nil, err
 	}
 
-	var apiResponse ApiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return nil, err
-	}
-
-	return &apiResponse, nil
+	return r.getResponse(resp)
 }
 
 func (r *RivetAPI) Start(name string) (*ApiResponse, error) {
@@ -161,12 +141,7 @@ func (r *RivetAPI) Start(name string) (*ApiResponse, error) {
 		return nil, err
 	}
 
-	var apiResponse ApiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return nil, err
-	}
-
-	return &apiResponse, nil
+	return r.getResponse(resp)
 }
 
 func (r *RivetAPI) Stop(name string) (*ApiResponse, error) {
@@ -178,10 +153,5 @@ func (r *RivetAPI) Stop(name string) (*ApiResponse, error) {
 		return nil, err
 	}
 
-	var apiResponse ApiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return nil, err
-	}
-
-	return &apiResponse, nil
+	return r.getResponse(resp)
 }

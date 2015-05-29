@@ -12,7 +12,8 @@ import (
 )
 
 type RivetAPI struct {
-	endpoint string
+	endpoint  string
+	authToken string
 }
 
 type ApiResponse struct {
@@ -20,9 +21,10 @@ type ApiResponse struct {
 	Response   string `json:"response,omitempty"`
 }
 
-func NewRivetAPI(endpoint string) (*RivetAPI, error) {
+func NewRivetAPI(endpoint, authToken string) (*RivetAPI, error) {
 	return &RivetAPI{
-		endpoint: endpoint,
+		endpoint:  endpoint,
+		authToken: authToken,
 	}, nil
 }
 
@@ -40,6 +42,11 @@ func (r *RivetAPI) doRequest(method string, p string, params *url.Values, body i
 		return nil, err
 	}
 
+	// add auth header if token specified
+	if r.authToken != "" {
+		req.Header.Add("X-Auth-Token", r.authToken)
+	}
+
 	client := &http.Client{}
 
 	return client.Do(req)
@@ -47,6 +54,13 @@ func (r *RivetAPI) doRequest(method string, p string, params *url.Values, body i
 
 func (r *RivetAPI) getResponse(resp *http.Response) (*ApiResponse, error) {
 	var apiResponse ApiResponse
+
+	if resp.StatusCode == 401 {
+		return &ApiResponse{
+			StatusCode: resp.StatusCode,
+			Response:   "Unauthorized",
+		}, nil
+	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
 		return nil, err

@@ -20,6 +20,7 @@ type Driver struct {
 	CPU            int
 	Memory         int
 	Storage        int
+	AuthToken      string
 	SSHUser        string
 	SSHPort        int
 	CaCertPath     string
@@ -76,6 +77,12 @@ func GetCreateFlags() []cli.Flag {
 			Value:  "root",
 			EnvVar: "RIVET_SSH_USER",
 		},
+		cli.StringFlag{
+			Name:   "rivet-auth-token",
+			Usage:  "Auth Token for Rivet API (optional)",
+			Value:  "",
+			EnvVar: "RIVET_AUTH_TOKEN",
+		},
 	}
 }
 
@@ -130,6 +137,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.Memory = flags.Int("rivet-memory")
 	d.Storage = flags.Int("rivet-storage")
 	d.SSHUser = flags.String("rivet-ssh-user")
+	d.AuthToken = flags.String("rivet-auth-token")
 
 	if d.APIEndpoint == "" {
 		return fmt.Errorf("rivet driver requires the --rivet-address option")
@@ -143,7 +151,7 @@ func (d *Driver) PreCreateCheck() error {
 }
 
 func (d *Driver) getAPI() (*rvt.RivetAPI, error) {
-	return rvt.NewRivetAPI(d.APIEndpoint)
+	return rvt.NewRivetAPI(d.APIEndpoint, d.AuthToken)
 }
 
 func (d *Driver) Create() error {

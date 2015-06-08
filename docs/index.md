@@ -1470,23 +1470,26 @@ Create machines using the [Rivet API](https://github.com/ehazlett/rivet).
 
 Options:
 
- - `--rivet-address`: **required** Rivet API Endpoint Address.
+ - `--rivet-addr`: **required** Rivet API Endpoint Address.
  - `--rivet-auth-token`: Rivet API auth token.
  - `--rivet-cpu`: Number of CPUs
  - `--rivet-memory`: Amount of memory (in MB)
  - `--rivet-ssh-user: SSH user for provisioning
  - `--rivet-storage: Amount of storage (in GB)
+ - `--rivet-image: Image for Rivet instance
+ - `--rivet-env: Environment variable(s) for Rivet API
 
 Environment variables and default values:
 
 | CLI option                   | Environment variable | Default                                |
 |------------------------------|----------------------|----------------------------------------|
-| **`--rivet-address`**        | `RIVET_ADDRESS`      | -                                      |
+| **`--rivet-addr`**           | `RIVET_ADDR`         | -                                      |
 | `--rivet-auth-token`         | `RIVET_AUTH_TOKEN`   | -                                      |
 | `--rivet-cpu`                | `RIVET_CPU`          | 1                                      |
 | `--rivet-memory`             | `RIVET_MEMORY`       | 1024                                   |
 | `--rivet-ssh-user`           | `RIVET_SSH_USER`     | root                                   |
 | `--rivet-storage`            | `RIVET_STORAGE`      | 10                                     |
+| `--rivet-image`              | `RIVET_IMAGE`        | default                                |
 
 #### Oracle VirtualBox
 Create machines locally using [VirtualBox](https://www.virtualbox.org/).

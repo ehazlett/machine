@@ -69,12 +69,17 @@ func (r *RivetAPI) getResponse(resp *http.Response) (*ApiResponse, error) {
 	return &apiResponse, nil
 }
 
-func (r *RivetAPI) Create(name string, key []byte, cpu int, memory int, storage int) (*ApiResponse, error) {
+func (r *RivetAPI) Create(name string, key []byte, cpu int, memory int, storage int, image string, env []string) (*ApiResponse, error) {
 	params := &url.Values{}
 	params.Add("name", name)
 	params.Add("cpu", fmt.Sprintf("%d", cpu))
 	params.Add("memory", fmt.Sprintf("%d", memory))
 	params.Add("storage", fmt.Sprintf("%d", storage))
+	params.Add("image", fmt.Sprintf("%s", image))
+
+	for _, v := range env {
+		params.Add("env", v)
+	}
 
 	buf := bytes.NewBuffer(key)
 

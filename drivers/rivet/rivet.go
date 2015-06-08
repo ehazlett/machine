@@ -17,9 +17,11 @@ import (
 type Driver struct {
 	MachineName    string
 	APIEndpoint    string
+	Image          string
 	CPU            int
 	Memory         int
 	Storage        int
+	Environment    []string
 	AuthToken      string
 	SSHUser        string
 	SSHPort        int
@@ -48,10 +50,10 @@ func init() {
 func GetCreateFlags() []cli.Flag {
 	return []cli.Flag{
 		cli.StringFlag{
-			Name:   "rivet-address",
+			Name:   "rivet-addr",
 			Usage:  "Address of rivet API endpoint",
 			Value:  "",
-			EnvVar: "RIVET_ADDRESS",
+			EnvVar: "RIVET_ADDR",
 		},
 		cli.IntFlag{
 			Name:   "rivet-cpu",
@@ -70,6 +72,17 @@ func GetCreateFlags() []cli.Flag {
 			Usage:  "Storage for rivet instance (in GB)",
 			Value:  10,
 			EnvVar: "RIVET_STORAGE",
+		},
+		cli.StringFlag{
+			Name:   "rivet-image",
+			Usage:  "Image for rivet instance",
+			Value:  "default",
+			EnvVar: "RIVET_IMAGE",
+		},
+		cli.StringSliceFlag{
+			Name:  "rivet-env",
+			Usage: "Environment variables for Rivet instance",
+			Value: &cli.StringSlice{},
 		},
 		cli.StringFlag{
 			Name:   "rivet-ssh-user",
@@ -132,12 +145,14 @@ func (d *Driver) GetSSHUsername() string {
 }
 
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
-	d.APIEndpoint = flags.String("rivet-address")
+	d.APIEndpoint = flags.String("rivet-addr")
 	d.CPU = flags.Int("rivet-cpu")
 	d.Memory = flags.Int("rivet-memory")
 	d.Storage = flags.Int("rivet-storage")
 	d.SSHUser = flags.String("rivet-ssh-user")
 	d.AuthToken = flags.String("rivet-auth-token")
+	d.Image = flags.String("rivet-image")
+	d.Environment = flags.StringSlice("rivet-env")
 
 	if d.APIEndpoint == "" {
 		return fmt.Errorf("rivet driver requires the --rivet-address option")
@@ -167,7 +182,9 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	resp, err := r.Create(d.MachineName, key, d.CPU, d.Memory, d.Storage)
+	log.Debugf("env: %v", d.Environment)
+
+	resp, err := r.Create(d.MachineName, key, d.CPU, d.Memory, d.Storage, d.Image, d.Environment)
 	if err != nil {
 		return err
 	}
